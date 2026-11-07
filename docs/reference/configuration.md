@@ -707,6 +707,7 @@ Every limit is off when it is `0` or omitted. A `fastmm-live` session that trade
 | `max_net_notional` | any |  | refuse an order that would take the portfolio's signed position sum further past this, settlement currency (or reporting_currency), decimal |
 | `orders_per_sec` | integer |  | token-bucket order rate, orders/s |
 | `burst` | integer |  | token-bucket capacity, orders (default orders_per_sec) |
+| `reduce_only_min_notional_exempt` | boolean |  | Allow flagged derivative orders that only close inventory below min_notional; enable only for supporting venues. |
 | `stp` | boolean |  | self-trade prevention against our own resting orders (default true) |
 | `max_feed_lag_ms` | integer |  | pull a venue's quotes and refuse orders that could rest there without reducing the position while its market data arrives this much later than its baseline, ms; resumes 100 ms after the last message over it (default 0: off) |
 | `check_balance` | boolean |  | refuse an order the venue's reported balance, less this session's orders and fills since, cannot cover; off for a venue until it reports balances (default true) |

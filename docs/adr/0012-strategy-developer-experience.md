@@ -240,6 +240,7 @@ Implemented in 2026-09 in this order: golden hashes, engine fixes, hooks and con
 - `DesiredQuotes::bid/ask` also drop a non-positive quantity and levels beyond `kMaxQuoteLevels`, so a zero-quantity level (`quote_qty` below the lot) is no longer sent.
 - `configure()` applies keys to a copy and replaces the parameters only after `validate()` passes.
 - AvellanedaStoikov's seconds-valued parameters and OptionsMM's `max_delta` and `max_vega` stay `double`; no built-in strategy has a `validate()`.
+- BasicMM consumes locally delivered BBO tickers and retries deferred quotes from its timer. These intentional quote-timing changes alter its golden outbound streams; replay of each newly recorded stream must still reproduce its hash exactly.
 - The `basic_mm/coupled` and `basic_mm/l2_queue` golden hashes were re-baselined: their test market's `half_spread_bps = 0.003` had rounded to 0 in the centi-bps code.
 - `register_strategy<S, Transports>(r)` exists for FastMM's own tests; the documented API is `register_strategy<S>(r)`.
 - `EngineConfig` moved to `core/engine_config.hpp` so registration headers do not include `engine.hpp`, and `StrategyRegistry::add` was removed.

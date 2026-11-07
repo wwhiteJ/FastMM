@@ -763,6 +763,12 @@ inline constexpr KeySpec kConfigSchema[] = {
      false,
      "token-bucket capacity, orders (default orders_per_sec)"},
     {"risk",
+     "reduce_only_min_notional_exempt",
+     KeyType::Bool,
+     false,
+     "Allow flagged derivative orders that only close inventory below min_notional; enable only "
+     "for supporting venues."},
+    {"risk",
      "stp",
      KeyType::Bool,
      false,

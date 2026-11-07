@@ -1,0 +1,9 @@
+[Unit]
+Description=Check FastMM paper disk space every minute
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=5
+Unit=fastmm-paper-disk.service
+[Install]
+WantedBy=timers.target

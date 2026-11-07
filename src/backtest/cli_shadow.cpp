@@ -8,6 +8,7 @@
 #include "command_line.hpp"
 
 #include "fastmm/backtest/shadow.hpp"
+#include "fastmm/backtest/shadow_rows_writer.hpp"
 #include "fastmm/cli/modules.hpp"
 #include "fastmm/cli/shadow.hpp"
 #include "fastmm/config/config.hpp"
@@ -28,6 +29,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <optional>
 #include <string>
 #include <thread>
@@ -72,6 +74,7 @@ int shadow(int argc, char** argv, std::span<const StrategyModule> modules) {
   const char* prog = program.c_str();
   std::string config_path;
   std::string session;
+  std::string rows_path;
   int threads = 0;
   int idle_exit_s = 0;
   bool verbose = false;
@@ -96,6 +99,8 @@ int shadow(int argc, char** argv, std::span<const StrategyModule> modules) {
                  "leave when no session has come for this long after the last ended, default never")
       ->option_text("<s>");
   app.add_flag("--verbose", verbose, "log what the runs do, as a backtest does");
+  app.add_option("--rows", rows_path, "write baseline simulated fills and equity as raw 1e-8 JSONL")
+      ->option_text("<file.jsonl>");
   if (const std::optional<int> rc = parse(app, argc, argv)) return *rc;
   if (config_path.empty()) return usage_error(app, "--config is required");
   if (!register_strategy_modules(program, modules)) return kExitInput;
@@ -132,6 +137,18 @@ int shadow(int argc, char** argv, std::span<const StrategyModule> modules) {
     opt.report_path = cfg->engine.journal_dir + "/" + cfg->engine.name + ".shadow.json";
   if (opt.status_path.empty()) opt.status_path = default_shadow_status_path(cfg->engine.name);
   opt.stop = &g_stop;
+  std::ofstream rows;
+  bt::ShadowRowsWriter rows_writer(rows);
+  if (!rows_path.empty()) {
+    rows.open(rows_path);
+    if (!rows) {
+      std::fprintf(stderr, "%s: cannot open rows file %s\n", prog, rows_path.c_str());
+      Logger::instance().stop();
+      return kExitInput;
+    }
+    rows.exceptions(std::ios::badbit | std::ios::failbit);
+    opt.on_rows = [&](const bt::ShadowRows& r) { rows_writer.write(r); };
+  }
   std::signal(SIGINT, on_signal);
   std::signal(SIGTERM, on_signal);
   int rc = 0;

@@ -104,6 +104,7 @@ struct OrderIntent {
   Price price;
   Qty qty;
   TimeInForce tif = TimeInForce::Gtc;  // Ioc / Fok never rest (the feed-lag gate lets them pass)
+  bool reduce_only = false;
 };
 
 // The order's underlying ([risk.underlying]) as RiskEngine::underlying_inputs measures it, base
@@ -146,6 +147,20 @@ struct RiskInputs {
   // the position no nearer zero is refused (nearer_zero, core/position.hpp).
   bool reduce_only = false;
 };
+
+// A venue-specific opt-in; a reduce-only flag alone cannot bypass the entry-size guard.
+inline bool min_notional_exempt(const OrderIntent& o,
+                                const Instrument& inst,
+                                const RiskInputs& in,
+                                Qty excluded,
+                                const RiskLimits& limits) noexcept {
+  if (!limits.reduce_only_min_notional_exempt || !o.reduce_only || !inst.is_derivative() ||
+      in.position == nullptr)
+    return false;
+  const Qty position = in.position->qty;
+  if (position.is_zero() || (position.is_positive() == (o.side == Side::Buy))) return false;
+  return o.qty + in.open_same_side - excluded <= position.abs();
+}
 
 struct RiskStats {
   std::uint64_t checks = 0;
@@ -508,7 +523,8 @@ class RiskEngine {
     if (!inst.valid_qty(o.qty)) return RejectReason::InvalidLot;
     const Notional notional =
         inst.notional(o.type == OrderType::Market ? md_[o.instrument.value].mid : o.price, o.qty);
-    if (inst.min_notional.is_positive() && notional < inst.min_notional)
+    if (inst.min_notional.is_positive() && notional < inst.min_notional &&
+        !min_notional_exempt(o, inst, in, exclude_open, limits_))
       return RejectReason::BelowMinNotional;
     const MdState& md = md_[o.instrument.value];
     if (limits_.stale_md.ns > 0 &&

@@ -346,6 +346,7 @@ OPTIONS:
   --idle-exit <s>             leave when no session has come for this long after the last
                               ended, default never
   --verbose                   log what the runs do, as a backtest does
+  --rows <file.jsonl>         write baseline simulated fills and equity as raw 1e-8 JSONL
 ```
 <!-- END cli-help -->
 

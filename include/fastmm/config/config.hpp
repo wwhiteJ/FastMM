@@ -285,6 +285,7 @@ struct RiskSection {
   std::string max_net_notional;
   int orders_per_sec = 0;
   int burst = 0;
+  bool reduce_only_min_notional_exempt = false;
   bool stp = true;
   int max_feed_lag_ms = 0;    // 0 = off
   bool check_balance = true;  // refuse what the venue's balance cannot cover

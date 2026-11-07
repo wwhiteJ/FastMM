@@ -43,6 +43,18 @@ class Config;
 
 namespace fastmm::bt {
 
+// Newly consumed rows, delivered synchronously before bounded-memory runs discard them.
+struct ShadowRows {
+  std::uint64_t session_id;
+  std::size_t point;
+  const FillRows& fills;
+  std::size_t fill_begin;
+  std::size_t fill_end;
+  const EquityRows& equity;
+  std::size_t bar_begin;
+  std::size_t bar_end;
+};
+
 struct ShadowOptions {
   // The variants; the live point, which sets nothing, always runs first as point 0.
   SweepPoints variants;
@@ -64,6 +76,7 @@ struct ShadowOptions {
   std::string config_text;
   // Changes the configuration of the session's runs before the points are applied to it.
   std::function<void(BacktestConfig&)> configure;
+  std::function<void(const ShadowRows&)> on_rows;
   // The timings of the journal's reader; `settle`, `stop` and `on_record` are set from here.
   FollowOptions follow;
 };

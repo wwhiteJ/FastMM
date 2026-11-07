@@ -1,0 +1,29 @@
+[Unit]
+Description=FastMM BTCUSDT simulated fills from public market journal
+After=fastmm-paper-feed.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=fastmm
+Group=fastmm
+WorkingDirectory=/var/lib/fastmm/paper
+ExecCondition=/usr/bin/test ! -e /var/lib/fastmm/paper/PAUSED
+ExecStart=/opt/fastmm/paper/start-shadow.sh
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=45
+KillSignal=SIGINT
+MemoryMax=650M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/fastmm/paper /dev/shm
+PrivateTmp=true
+UMask=0027
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

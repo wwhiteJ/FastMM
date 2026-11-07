@@ -13,6 +13,7 @@
 #include "fastmm/backtest/multiverse.hpp"
 #include "fastmm/backtest/registrations.hpp"
 #include "fastmm/backtest/shadow.hpp"
+#include "fastmm/backtest/shadow_rows_writer.hpp"
 #include "fastmm/backtest/sweep.hpp"
 #include "fastmm/config/config.hpp"
 #include "fastmm/core/rng.hpp"
@@ -518,15 +519,25 @@ TEST_CASE("backtest.shadow.report: forgetting the rows changes no number") {
   const std::string source = record_session("shadow_forget_src.fmj", session_toml(false), 12'000);
   const std::string path = tmp_journal("shadow_forget.fmj");
   rewrite_live(source, path, 0, additions(source));
-  Shadow keeping(shadow_opts(kVariants, 1));
+  std::ostringstream kept_rows;
+  ShadowRowsWriter kept_writer(kept_rows);
+  ShadowOptions kept_options = shadow_opts(kVariants, 1);
+  kept_options.on_rows = [&](const ShadowRows& r) { kept_writer.write(r); };
+  Shadow keeping(kept_options);
   static_cast<void>(keeping.session(path));
   ShadowOptions o = shadow_opts(kVariants, 1);
   o.keep_results = false;
+  std::ostringstream forgotten_rows;
+  ShadowRowsWriter forgotten_writer(forgotten_rows);
+  o.on_rows = [&](const ShadowRows& r) { forgotten_writer.write(r); };
   Shadow forgetting(o);
   const ShadowSessionResult f = forgetting.session(path);
   // End's result covers what was not forgotten: the rows are mostly gone.
   CHECK(settled(keeping.report_json()) == settled(forgetting.report_json()));
   CHECK(f.results[0].equity.size() < 4);
+  CHECK_FALSE(kept_rows.str().empty());
+  CHECK(kept_rows.str().find("\"type\":\"fill\"") != std::string::npos);
+  CHECK(kept_rows.str() == forgotten_rows.str());
 }
 
 TEST_CASE(

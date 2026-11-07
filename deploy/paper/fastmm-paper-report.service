@@ -1,0 +1,17 @@
+[Unit]
+Description=FastMM simulated PnL including settled funding estimate
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=fastmm
+Group=fastmm
+ExecStart=/usr/bin/python3 /opt/fastmm/paper/report.py --directory /var/lib/fastmm/paper
+TimeoutStartSec=40
+MemoryMax=128M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/fastmm/paper
+PrivateTmp=true
+UMask=0027
