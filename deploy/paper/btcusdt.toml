@@ -1,0 +1,99 @@
+# Public production data; the service always starts fastmm-live with --dry-run.
+[engine]
+name = "btc-paper"
+cpu = -1
+net_cpus = []
+spin_mode = "adaptive"
+journal = true
+journal_dir = "/var/lib/fastmm/paper/runs"
+journal_max_bytes = 268435456
+epoch_file = "/var/lib/fastmm/paper/session_epoch"
+rng_seed = 42
+md_ring_bytes = 4194304
+order_ring_bytes = 1048576
+journal_ring_bytes = 16777216
+max_events_per_step = 64
+crossed_grace_ms = 100
+min_requote_ticks = 10
+min_requote_interval_ms = 100
+min_qty_bps = 8000
+post_only = true
+supports_replace = false
+
+[venues.binance_usdm]
+kind = "binance_usdm"
+ws_url = "wss://fstream.binance.com"
+ws_api_url = "wss://ws-fapi.binance.com/ws-fapi/v1"
+rest_url = "https://fapi.binance.com"
+testnet = false
+supports_replace = false
+stale_ms = 10000
+
+[venues.binance_usdm.fees]
+maker_bps = 1.8
+taker_bps = 4.5
+
+[[instruments]]
+venue = "binance_usdm"
+symbol = "BTCUSDT"
+base = "BTC"
+quote = "USDT"
+asset_class = "perpetual"
+tick = "0.10"
+lot = "0.001"
+min_qty = "0.001"
+min_notional = "100"
+initial_margin = "1.0"
+enabled = true
+
+[strategy]
+name = "basic_mm"
+[strategy.params]
+half_spread_bps = 5.0
+skew_bps_per_unit = 0.5
+quote_qty = 0.002
+max_inventory = 0.006
+requote_threshold_ticks = 10
+pull_on_stale_ms = 2000
+levels = 1
+
+[risk]
+max_order_qty = "0.002"
+max_order_notional = "500"
+max_position = "0.006"
+max_open_orders = 4
+price_collar_bps = 50
+fat_finger_bps = 200
+stale_md_ms = 2000
+max_loss = "20"
+orders_per_sec = 30
+burst = 30
+stp = true
+
+[backtest]
+fill_model = "l2_queue"
+queue_conservatism = 1.0
+md_arrival = "recorded"
+# Scenario assumptions, not measured order latency.
+latency_fixed_us = 5000
+latency_ack_us = 5000
+latency_cancel_us = 5000
+latency_jitter_us = 1000
+latency_cancel_jitter_us = 1000
+initial_capital = 100000
+equity_bar_s = 30
+[backtest.balances]
+USDT = "100000"
+
+[shadow]
+enabled = false
+threads = 1
+window_s = 30
+settle_s = 10
+nice = 10
+
+[storage]
+backend = "none"
+[logging]
+level = "info"
+status_interval_s = 30

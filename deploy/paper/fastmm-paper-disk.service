@@ -1,0 +1,5 @@
+[Unit]
+Description=Pause FastMM paper recording before disk fills
+[Service]
+Type=oneshot
+ExecStart=/opt/fastmm/paper/disk-guard.sh

@@ -422,6 +422,8 @@ struct Shadow::Impl {
 
   void consume(std::size_t index, const FillRows& f, const EquityRows& e, std::uint64_t orders) {
     Track& t = tracks[index];
+    const std::size_t fill_begin = t.fill_at;
+    const std::size_t bar_begin = t.bar_at;
     const std::size_t n_inst = cur.instruments;
     std::vector<InstrumentWindow> rows;
     std::vector<double> nets;
@@ -470,6 +472,9 @@ struct Shadow::Impl {
       for (std::size_t i = 0; i < n_inst; ++i) point_net[index][i] += nets[i];
       cur.reported[index] = std::max(cur.reported[index], k + 1);
     }
+    if (opt.on_rows)
+      opt.on_rows(ShadowRows{sessions[cur.row].session_id, index, f, fill_begin, t.fill_at,
+                             e, bar_begin, t.bar_at});
   }
 
   static void merge_rows(std::vector<InstrumentWindow>& to,

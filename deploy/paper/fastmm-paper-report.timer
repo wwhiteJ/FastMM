@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh FastMM paper summary every minute
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+AccuracySec=5
+Unit=fastmm-paper-report.service
+[Install]
+WantedBy=timers.target
