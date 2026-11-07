@@ -94,11 +94,15 @@ def markouts(rows, samples, end):
 def describe(directory, rows, samples, end):
     summary = json.loads((directory / 'summary.json').read_text())
     gross = summary['realized_pnl'] + summary['unrealized_pnl']
-    capture = sum(f['sign'] * (f['mid'] - f['px']) * f['qty'] / (SCALE * SCALE) for f in rows)
+    marked = [f for f in rows if f['mid'] > 0]
+    capture = sum(f['sign'] * (f['mid'] - f['px']) * f['qty'] / (SCALE * SCALE) for f in marked)
+    missing = len(rows) - len(marked)
     keys = ('fills', 'maker_fills', 'taker_fills', 'fees', 'net_pnl', 'final_position',
             'orders', 'cancels', 'rejects', 'risk_rejects', 'inventory_max', 'max_drawdown')
     return dict(**{k: summary[k] for k in keys}, gross_pnl=gross,
-                depth_mid_capture=capture, depth_mid_inventory_drift=gross-capture,
+                missing_depth_mid_fills=missing, valid_depth_mid_capture=capture,
+                depth_mid_capture=capture if not missing else None,
+                depth_mid_inventory_drift=gross-capture if not missing else None,
                 ticker_markouts=markouts(rows, samples, end))
 
 
