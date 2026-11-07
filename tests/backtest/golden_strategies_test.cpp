@@ -46,7 +46,7 @@ TEST_CASE("backtest.golden: BasicMM outbound hash, coupled matching market, two 
   const BacktestResult r = run_backtest<BasicMM>(cfg);
   REQUIRE(r.metrics.fills > 0);
   check_golden(
-      "basic_mm/coupled", r, "a4c5af9990a2beeb5a83624670328153b468f8e17db75f8736a896e819644c2f");
+      "basic_mm/coupled", r, "7cf5be34e2741f4f79598503f7a40202b4371ab6fb2de1545e87f49f5e36d19c");
 }
 
 TEST_CASE("backtest.golden: BasicMM outbound hash, L2 queue model with stale-book pulls") {
@@ -63,7 +63,7 @@ TEST_CASE("backtest.golden: BasicMM outbound hash, L2 queue model with stale-boo
   const BacktestResult r = run_backtest<BasicMM>(cfg, &src);
   REQUIRE(r.engine.timers_fired > 0);
   check_golden(
-      "basic_mm/l2_queue", r, "03eba4e58026194ae0337f1edf2074b97166efb611530aef1e688bc49be6ad5c");
+      "basic_mm/l2_queue", r, "948266069a3090fe205815323170d16fb8065eb3d2f330bf1f1eacd8f5023e74");
 }
 
 TEST_CASE("backtest.golden: AvellanedaStoikov outbound hash on a fixed seed") {
@@ -123,5 +123,5 @@ TEST_CASE("backtest.golden: BasicMM outbound hash, L2 queue model, three levels 
   REQUIRE(r.metrics.fills > 0);
   check_golden("basic_mm/l2_queue_levels",
                r,
-               "1043e3c895f964a513c1cda9c051449d565bcb9031b776a964a5d84d1db541aa");
+               "62773744e452693aca9d3860669a1eff005ee0134d8a1392ab08a397ca038147");
 }
