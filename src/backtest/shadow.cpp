@@ -473,8 +473,8 @@ struct Shadow::Impl {
       cur.reported[index] = std::max(cur.reported[index], k + 1);
     }
     if (opt.on_rows)
-      opt.on_rows(ShadowRows{sessions[cur.row].session_id, index, f, fill_begin, t.fill_at,
-                             e, bar_begin, t.bar_at});
+      opt.on_rows(ShadowRows{
+          sessions[cur.row].session_id, index, f, fill_begin, t.fill_at, e, bar_begin, t.bar_at});
   }
 
   static void merge_rows(std::vector<InstrumentWindow>& to,

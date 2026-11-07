@@ -49,13 +49,19 @@ enabled = true
 [strategy]
 name = "basic_mm"
 [strategy.params]
-half_spread_bps = 5.0
+half_spread_bps = 3.0
 skew_bps_per_unit = 0.5
 quote_qty = 0.002
 max_inventory = 0.006
 requote_threshold_ticks = 10
 pull_on_stale_ms = 2000
 levels = 1
+trace_quotes = true
+inventory_reduce_pct = 80
+inventory_soft_ms = 15000
+inventory_hard_ms = 60000
+exit_slippage_bps = 5.0
+exit_retry_ms = 1000
 
 [risk]
 max_order_qty = "0.002"
@@ -69,6 +75,7 @@ max_loss = "20"
 orders_per_sec = 30
 burst = 30
 stp = true
+reduce_only_min_notional_exempt = true
 
 [backtest]
 fill_model = "l2_queue"

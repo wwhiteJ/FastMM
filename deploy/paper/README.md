@@ -39,8 +39,32 @@ The collector rotates journal parts at the configured size. No active journal pa
 
 ## Build and install
 
-Build portable Release executables on the build host, with `FASTMM_NATIVE_ARCH=OFF`. The deployed source tree and patch accompany the binaries. `BUILD.json` records the source revision, patch digest and binary digests.
+Build portable Release executables on the build host, with `FASTMM_NATIVE_ARCH=OFF`. The committed source archive accompanies the binaries. `BUILD.json` records the clean source commit and the binary/configuration digests.
 
 Prepare a package with `bin/fastmm-live`, `bin/fastmm-shadow`, `bin/fastmm-top`, `bin/fastmm-backtest`, and this directory copied to `paper/`. Run `bash paper/install.sh PACKAGE_DIR` as root on the target. Installation starts the paper services; inspect existing services before using it for an upgrade.
 
 The change adds an injected row observer to the existing oversized shadow implementation instead of refactoring its unrelated comparison logic. Export and accounting logic live in separate, testable components. Validate the observer with `fastmm_backtest_tests --test-case='*shadow*'`, and accounting with `python3 -m unittest discover -s deploy/paper -p 'test_*.py'`.
+
+## BBO and inventory lifecycle
+
+The paper configuration uses the original 3 bps half-spread. `basic_mm` prices from the newest locally delivered depth or bookTicker BBO, ordered by their common venue update ID (timestamps when IDs are unavailable). An older depth update cannot replace a newer ticker or refresh its local age. A newer invalid BBO pulls quotes; fresh valid data is needed to resume. Depth callbacks remain enabled even when the mid is unchanged, so freshness is maintained.
+
+Ordinary quote changes retain the engine's 100 ms interval and price threshold. Quote withdrawals bypass that interval. A timer retries a deferred price change when no subsequent market move arrives. Inventory reduction latches at `inventory_reduce_pct` of the cap or `inventory_soft_ms` after the position first leaves zero; partial reductions do not restart this clock. It clears only at flat. Entering this state cancels the old ladder and waits for terminal order updates before quoting only the reducing side, with total quantity capped to the remaining position.
+
+At `inventory_hard_ms`, the strategy cancels maker quotes, waits until no orders remain open, then sends reduce-only IOC limits. Each attempt is at most `quote_qty`, priced at most `exit_slippage_bps` beyond the current BBO, and attempts are separated by `exit_retry_ms`. Partial fills, rejected cancels, stale data, order rejections and missing liquidity can delay flatness; the timeout starts the exit process, rather than guaranteeing a fill at that instant. No IOC is sent while quoting is disabled or reconciliation is pending. The paper configuration's slippage limit is an execution assumption to validate in replay.
+
+`risk.reduce_only_min_notional_exempt` is an explicit venue-policy opt-in for a flagged derivative order that only closes the unreserved position. It allows the hard exit to handle a residual below the entry minimum notional without reducing the entry guard. Wrong-side, oversized, unflagged and spot orders retain that guard; lot-size and other risk checks still apply. Enable this only where the venue supports the exception.
+
+With `trace_quotes = true`, the shadow's `--verbose` log records decision time, chosen BBO and update ID, local market age, inventory age/state, interval deferrals and exit rejection reasons. These are asynchronous diagnostic logs: check `diagnostics.json` for dropped records in an offline replay. Simulated fills/equity remain in `rows-*.jsonl`.
+
+## Replay and release verification
+
+Build `fastmm-paper-replay` with the same portable preset as the deployed programs. It runs the exact Shadow path over a closed collector journal, preserving its recorded arrival times, exchange feed, fees, latency assumptions and engine throttles. The supplied configuration overrides strategy parameters and the reduce-only minimum-notional policy; parameter names are pinned against journal updates. It exports fills, equity, diagnostics and the shadow report:
+
+```bash
+build/release-nolto/bin/fastmm-paper-replay FIRST_PART.fmj PARAM_CONFIG.toml OUTPUT_DIR
+```
+
+Compare the preserved pre-fix executable with the new executable at the same 3 bps parameters, then enable inventory exits, then compare the 5 bps variant separately. Keep all parts of the closed journal and verify their hashes. For the baseline, verify fill rows and equity against the archived paper session before interpreting any comparison. Final PnL includes unrealized inventory and commissions; forward markouts are diagnostics, not additional realized losses.
+
+Before an upgrade, commit the source on a task branch, run the lifecycle, risk, shadow and accounting checks, and build from that clean commit. Archive the running session's configuration, summary, rows, binaries and build manifest before stopping its collector. Install the release with a manifest recording the commit and SHA-256 of each binary/configuration; retain the previous package for rollback. A restart begins a new flat paper trial. Inspect service state, session ID, configuration, diagnostic logs and newly arriving equity bars after switching.

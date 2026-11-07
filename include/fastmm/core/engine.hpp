@@ -3473,7 +3473,8 @@ class Engine {
     } else if (FASTMM_UNLIKELY(req.account.valid() && req.account != inst.venue)) {
       return fail(RejectReason::InvalidAccount);
     }
-    OrderIntent oi{req.instrument, account, req.side, req.type, req.price, req.qty, req.tif};
+    OrderIntent oi{
+        req.instrument, account, req.side, req.type, req.price, req.qty, req.tif, req.reduce_only};
     RiskInputs in{now,
                   flatten ? nullptr : &positions_.get(req.instrument),
                   positions_.gross_exposure(),
@@ -3651,7 +3652,8 @@ class Engine {
     if (!transport_.supports_replace(o.venue)) return fail(RejectReason::VenueReject);
     const Instrument& inst = instruments_.get(o.instrument);
     const Timestamp now = now_;
-    OrderIntent oi{o.instrument, o.venue, o.side, o.type, px, qty, o.tif};
+    OrderIntent oi{
+        o.instrument, o.venue, o.side, o.type, px, qty, o.tif, o.has(Order::kReduceOnly)};
     RiskInputs in{now,
                   &positions_.get(o.instrument),
                   positions_.gross_exposure(),

@@ -1008,6 +1008,7 @@ Config Config::parse(std::string_view text, const LoadOptions& opts, std::string
     get(*t, "orders_per_sec", r.orders_per_sec);
     get(*t, "burst", r.burst);
     get(*t, "stp", r.stp);
+    get(*t, "reduce_only_min_notional_exempt", r.reduce_only_min_notional_exempt);
     get(*t, "max_feed_lag_ms", r.max_feed_lag_ms);
     if (r.max_feed_lag_ms < 0) throw ConfigError("risk.max_feed_lag_ms must be >= 0");
     get(*t, "check_balance", r.check_balance);
@@ -1258,6 +1259,7 @@ RiskLimits Config::risk_limits() const {
   l.orders_per_sec = static_cast<std::uint32_t>(risk.orders_per_sec);
   l.burst = static_cast<std::uint32_t>(risk.burst);
   l.stp = risk.stp;
+  l.reduce_only_min_notional_exempt = risk.reduce_only_min_notional_exempt;
   l.max_feed_lag_ms = static_cast<std::uint32_t>(risk.max_feed_lag_ms);
   return l;
 }
@@ -1465,6 +1467,7 @@ std::string Config::redacted() const {
   kv("orders_per_sec", risk.orders_per_sec);
   kv("burst", risk.burst);
   kv("stp", risk.stp);
+  if (risk.reduce_only_min_notional_exempt) kv("reduce_only_min_notional_exempt", true);
   if (risk.max_feed_lag_ms != 0) kv("max_feed_lag_ms", risk.max_feed_lag_ms);
   if (!risk.check_balance) kv("check_balance", risk.check_balance);
   if (risk.allow_unlimited) kv("allow_unlimited", risk.allow_unlimited);
@@ -1801,6 +1804,7 @@ std::string Config::effective_toml() const {
   r.insert("orders_per_sec", static_cast<std::int64_t>(risk.orders_per_sec));
   r.insert("burst", static_cast<std::int64_t>(risk.burst));
   r.insert("stp", risk.stp);
+  if (risk.reduce_only_min_notional_exempt) r.insert("reduce_only_min_notional_exempt", true);
   // Only when set, so a configuration without it keeps its effective text and hash.
   if (risk.max_feed_lag_ms != 0)
     r.insert("max_feed_lag_ms", static_cast<std::int64_t>(risk.max_feed_lag_ms));

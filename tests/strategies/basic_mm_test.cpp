@@ -80,6 +80,8 @@ namespace {
 struct FakeBook {
   Price bid, ask;
   bool is_valid() const { return true; }
+  std::uint64_t seq() const { return 0; }
+  Timestamp last_update() const { return Timestamp{}; }
   Price mid() const { return Price::from_raw((bid.raw + ask.raw) / 2); }
   Level best_bid() const { return Level{bid, qt("1")}; }
   Level best_ask() const { return Level{ask, qt("1")}; }
@@ -117,6 +119,14 @@ struct QuoteCtx {
     return quoting;
   }
   void pull_quotes(InstrumentId) {}
+  QuoteStats stats;
+  const QuoteStats& quote_stats() const { return stats; }
+  void trace_quote(const QuoteDecision&) {}
+  void note_quote(InstrumentId, Side, std::string_view) {}
+  bool quoting_enabled() const { return quoting; }
+  bool reconciling() const { return false; }
+  Result<ClientOrderId, RejectReason> send(const NewOrderRequest&) { return ClientOrderId{1}; }
+
   // The band on_book would return at once inside (Price{} both: none).
   Price quiet_lo{};
   Price quiet_hi{};
@@ -158,28 +168,6 @@ TEST_CASE("strategies: a connection change forces the next requote even if the m
     AvellanedaStoikov s;
     check(s);
   }
-}
-
-TEST_CASE("strategies.basic_mm: the quiet band is the one on_book returns at once inside") {
-  BasicMM s;
-  QuoteCtx ctx;
-  const InstrumentId id{0};
-  s.on_book(ctx, id, ctx.b);
-  REQUIRE(ctx.set_quotes_calls == 1);
-  // Mid 100.05, requote_threshold_ticks 1 of 0.01: a mid strictly inside (100.04, 100.06).
-  CHECK(ctx.quiet_lo == px("100.04"));
-  CHECK(ctx.quiet_hi == px("100.06"));
-  ctx.b = FakeBook{px("100.01"), px("100.09")};  // mid 100.05: inside, no requote
-  s.on_book(ctx, id, ctx.b);
-  CHECK(ctx.set_quotes_calls == 1);
-  ctx.b = FakeBook{px("100.02"), px("100.10")};  // mid 100.06: on the edge, requote
-  s.on_book(ctx, id, ctx.b);
-  CHECK(ctx.set_quotes_calls == 2);
-  CHECK(ctx.quiet_lo == px("100.05"));
-  // A disconnect forgets the quoted mid, and the band with it.
-  s.on_connection(ctx, connection(ConnState::Disconnected));
-  CHECK(ctx.quiet_lo == Price{});
-  CHECK(ctx.quiet_hi == Price{});
 }
 
 namespace {

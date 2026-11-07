@@ -15,6 +15,7 @@
 #include "fastmm/core/order_budget.hpp"
 #include "fastmm/core/perp_book.hpp"
 #include "fastmm/core/position.hpp"
+#include "fastmm/core/quote_decision.hpp"
 #include "fastmm/core/quote_manager.hpp"
 #include "fastmm/core/result.hpp"
 #include "fastmm/core/risk_limits.hpp"
@@ -88,6 +89,11 @@ class StrategyContext {
     e_->mark_decision();
     e_->pull_quotes(id);
   }
+
+  [[nodiscard]] const QuoteStats& quote_stats() const noexcept {
+    return e_->quote_manager().stats();
+  }
+  void trace_quote(const QuoteDecision& decision) const noexcept { log_quote_decision(decision); }
 
   // ---- what the strategy watches
   // ----------------------------------------------------------------- The engine calls the

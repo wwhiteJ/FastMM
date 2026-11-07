@@ -29,6 +29,7 @@ struct RiskLimits {
   std::uint32_t orders_per_sec = 0;  // token bucket rate; 0 = unlimited
   std::uint32_t burst = 0;           // bucket capacity (defaults to orders_per_sec)
   bool stp = true;                   // self-trade prevention against our own resting orders
+  bool reduce_only_min_notional_exempt = false;
   // Feed-lag gate (core/venue_health.hpp): while a venue's market data arrives more than this
   // much later than its baseline, its quotes are pulled and orders that could rest there without
   // reducing the position are refused (FeedLag); 0 = off.
@@ -63,6 +64,9 @@ constexpr void for_each_changed_limit(const RiskLimits& a, const RiskLimits& b, 
   cmp("orders_per_sec", std::int64_t{a.orders_per_sec}, std::int64_t{b.orders_per_sec});
   cmp("burst", std::int64_t{a.burst}, std::int64_t{b.burst});
   cmp("stp", a.stp, b.stp);
+  cmp("reduce_only_min_notional_exempt",
+      a.reduce_only_min_notional_exempt,
+      b.reduce_only_min_notional_exempt);
   cmp("max_feed_lag_ms", std::int64_t{a.max_feed_lag_ms}, std::int64_t{b.max_feed_lag_ms});
 }
 
