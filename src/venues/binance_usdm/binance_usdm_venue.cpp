@@ -842,18 +842,18 @@ void BinanceUsdmVenue::resync_books() {
   }
 }
 
-// Trades and mark prices are informational for the engine: their connection state is logged, not
-// reported, so a quiet aggTrade stream never clears the books. A mark that stops arriving goes
-// stale in the engine's perp table (core/perp_book.hpp).
+// Report trade connectivity separately from books. Quiet streams are not disconnects; a mark
+// that stops arriving goes stale in the engine's perp table (core/perp_book.hpp).
 void BinanceUsdmVenue::on_trades_state(net::ConnState s) {
   const ConnState mapped = map_conn_state(s);
   if (mapped == trades_state_ || mapped == ConnState::Stale) return;
   const ConnState prev = trades_state_;
   trades_state_ = mapped;
   if (mapped == ConnState::Live) {
-    FASTMM_LOG_INFO("{}: trades channel -> Live", cfg_.name);
-  } else if (mapped == ConnState::Disconnected && prev != ConnState::Connecting) {
-    FASTMM_LOG_WARN("{}: trades channel -> Disconnected", cfg_.name);
+    report_channel_state(Channel::Trades, ConnState::Live);
+  } else if (prev == ConnState::Live ||
+             (mapped == ConnState::Disconnected && prev != ConnState::Connecting)) {
+    report_channel_state(Channel::Trades, ConnState::Disconnected);
   }
 }
 
@@ -1622,13 +1622,18 @@ void BinanceUsdmVenue::apply_action(VenueAction action,
 void BinanceUsdmVenue::report_channel_state(Channel ch, ConnState state, std::int32_t reason) {
   if (order_sink_ == nullptr) return;
   // Market-data state travels with the market data (ordering against deltas matters).
-  EventSink& sink = ch == Channel::Md ? *md_sink_ : *order_sink_;
-  venues::emit_connection_state(sink, id_, ch == Channel::Md ? 0 : 1, state, reason);
+  const bool market = ch == Channel::Md || ch == Channel::Trades;
+  EventSink& sink = market ? *md_sink_ : *order_sink_;
+  const std::uint8_t channel = ch == Channel::Trades ? ConnectionStateMsg::kTrades
+                               : ch == Channel::Md   ? 0
+                                                     : 1;
+  venues::emit_connection_state(sink, id_, channel, state, reason);
   FASTMM_LOG_INFO("{}: {} channel -> {}",
                   cfg_.name,
-                  ch == Channel::Md     ? "md"
-                  : ch == Channel::User ? "user"
-                                        : "order",
+                  ch == Channel::Md       ? "md"
+                  : ch == Channel::Trades ? "trades"
+                  : ch == Channel::User   ? "user"
+                                          : "order",
                   state);
 }
 

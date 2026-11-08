@@ -1,0 +1,26 @@
+[Unit]
+Description=FastMM C++ retention features (observe-only, simulated execution)
+After=network-online.target fastmm-paper-feed.service
+Wants=network-online.target
+ConditionPathExists=!/var/lib/fastmm/paper/PAUSED
+
+[Service]
+Type=simple
+User=fastmm
+Group=fastmm
+ExecStart=/bin/bash /opt/fastmm-retention/current/paper/start-retention-observe.sh
+Restart=on-failure
+RestartSec=15
+Nice=10
+CPUQuota=70%
+MemoryMax=650M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/fastmm/retention /dev/shm
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

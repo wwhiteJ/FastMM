@@ -94,6 +94,12 @@ class StrategyContext {
     return e_->quote_manager().stats();
   }
   void trace_quote(const QuoteDecision& decision) const noexcept { log_quote_decision(decision); }
+  void trace_retention(const RetentionObservation& observation) const noexcept {
+    log_retention_observation(observation);
+  }
+  void trace_retention_equity(const RetentionEquity& equity) const noexcept {
+    log_retention_equity(equity);
+  }
 
   // ---- what the strategy watches
   // ----------------------------------------------------------------- The engine calls the

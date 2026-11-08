@@ -28,6 +28,9 @@ Instrument inst() {
 }
 struct NoCtx {
   TimerId every(Duration, std::uint64_t) { return TimerId{1}; }
+  TimerId once(Duration, std::uint64_t) { return TimerId{2}; }
+  std::array<Instrument, 1> instruments() const { return {inst()}; }
+  Timestamp now() const { return Timestamp{seconds(1700000000).ns}; }
 };
 }  // namespace
 
@@ -122,6 +125,7 @@ struct QuoteCtx {
   QuoteStats stats;
   const QuoteStats& quote_stats() const { return stats; }
   void trace_quote(const QuoteDecision&) {}
+  void trace_retention(const RetentionObservation&) {}
   void note_quote(InstrumentId, Side, std::string_view) {}
   bool quoting_enabled() const { return quoting; }
   bool reconciling() const { return false; }

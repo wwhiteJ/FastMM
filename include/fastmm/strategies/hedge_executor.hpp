@@ -268,7 +268,7 @@ class HedgeExecutor {
   // Resyncing followed by snapshots with no Live. Does not send: the next event does.
   template <class Ctx>
   void on_connection(Ctx&, const ConnectionStateMsg& m) noexcept {
-    if (!ready_ || m.channel == 0) return;
+    if (!ready_ || m.channel == 0 || m.channel == ConnectionStateMsg::kTrades) return;
     const std::uint32_t bit = 1U << (m.channel & 31U);
     for (std::size_t i = 0; i < n_sources_ + n_hedges_; ++i) {
       Leg& l = leg(i);

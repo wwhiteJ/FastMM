@@ -34,6 +34,8 @@ class LatestBbo {
   [[nodiscard]] Price mid() const noexcept { return fastmm::mid(bid_.price, ask_.price); }
   [[nodiscard]] Price bid() const noexcept { return bid_.price; }
   [[nodiscard]] Price ask() const noexcept { return ask_.price; }
+  [[nodiscard]] Qty bid_qty() const noexcept { return bid_.qty; }
+  [[nodiscard]] Qty ask_qty() const noexcept { return ask_.qty; }
   [[nodiscard]] Timestamp received() const noexcept { return received_; }
   [[nodiscard]] std::uint64_t sequence() const noexcept { return seq_; }
   [[nodiscard]] bool from_ticker() const noexcept { return ticker_; }

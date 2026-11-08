@@ -707,6 +707,40 @@ TEST_CASE("binance_usdm.venue: dry run opens market data only, hedge mode refuse
   }
 }
 
+TEST_CASE("binance_usdm.venue: trade connectivity is ordered on the market sink") {
+  Harness h;
+  InstrumentTable instruments;
+  REQUIRE(instruments.add(make_instrument("BTCUSDT", 0, "BTC", "USDT")));
+  RecordingSink md(8U << 20), orders(1U << 20, SinkPolicy::Spin);
+  MsgRing outbound(1U << 16);
+  net::Reactor reactor;
+  SymbolTable symbols;
+  BinanceUsdmVenue venue(VenueId{0}, h.config(true));
+  REQUIRE(venue.load_reference_data(instruments));
+  REQUIRE(symbols.build(instruments));
+  venue.attach(symbols, instruments, md.sink, orders.sink, &outbound);
+  const InstrumentId ids[] = {InstrumentId{0}};
+  venue.subscribe(ids);
+  venue.connect(reactor);
+  Collected market;
+  const auto seen = [&](ConnState state) {
+    market.take(md);
+    return market.first_if<ConnectionStateMsg>(EventType::ConnectionState, [&](const auto& m) {
+      return m.channel == ConnectionStateMsg::kTrades && m.state == state;
+    }) != nullptr;
+  };
+  REQUIRE(pump_until(
+      reactor, [&] { return seen(ConnState::Live) && venue.md_feed()->synced_count() == 1; }));
+  h.srv.close_sessions("/market/stream");
+  REQUIRE(pump_until(reactor, [&] { return seen(ConnState::Disconnected); }));
+  CHECK(venue.md_feed()->synced_count() == 1);
+  market.all.clear();
+  REQUIRE(pump_until(reactor, [&] { return seen(ConnState::Live); }));
+  CHECK(venue.md_feed()->synced_count() == 1);
+  venue.disconnect();
+  reactor.run_once(0);
+}
+
 TEST_CASE("binance_usdm.venue: one_way_mode and leverage change the account only when asked") {
   const std::string flat_hedge =
       R"([{"symbol":"BTCUSDT","positionSide":"LONG","positionAmt":"0","entryPrice":"0.0"},{"symbol":"BTCUSDT","positionSide":"SHORT","positionAmt":"0","entryPrice":"0.0"}])";
