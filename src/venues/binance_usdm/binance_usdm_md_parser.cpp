@@ -289,6 +289,7 @@ DecodeResult overflow(MdParserStats& stats, DecodeResult r) noexcept {
   m->trade_id = agg_id;
   // "Is the buyer the market maker?": true means the seller crossed the spread.
   m->aggressor = buyer_is_maker ? Side::Sell : Side::Buy;
+  m->pad_[0] = 0;  // Binance always supplies m; the reused output buffer is not zeroed.
   m->hdr.venue_seq = agg_id;
   m->hdr.exch_ts = ts_from_ms(trade_time);
   stamp(*m, c.recv_ts, c.t0);

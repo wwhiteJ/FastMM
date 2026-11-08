@@ -2754,7 +2754,7 @@ class Engine {
         order_link_down_ |= venue_mask(venue);
       }
     }
-    if (m.state != ConnState::Live) {
+    if (m.state != ConnState::Live && m.channel != ConnectionStateMsg::kTrades) {
       for (const Instrument& inst : instruments_) {
         if (inst.venue != venue || (one && inst.id != only)) continue;
         if (m.channel == 0) {

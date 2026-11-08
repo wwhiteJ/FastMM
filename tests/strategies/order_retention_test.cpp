@@ -139,6 +139,64 @@ TEST_CASE("retention.strategy: observe retains the baseline orders") {
   CHECK(h.working_orders().size() == 2);
 }
 
+TEST_CASE("retention.strategy: trade disconnect preserves baseline books and orders") {
+  for (const int mode : {0, 1}) {
+    StrategyHarness<BasicMM> h(parameters(mode));
+    h.book("75000", "75000.10");
+    h.advance(milliseconds(1));
+    REQUIRE(h.working_orders().size() == 2);
+    const auto sent = h.engine().stats().orders_sent;
+    h.disconnect(ConnectionStateMsg::kTrades);
+    h.advance(milliseconds(1));
+    CHECK(h.working_orders().size() == 2);
+    CHECK(h.engine().stats().orders_sent == sent);
+  }
+}
+
+TEST_CASE("retention.strategy: disconnected trades stay invalid until reconnect warmup") {
+  StrategyHarness<BasicMM> h(parameters(2));
+  h.book("75000", "75000.10");
+  h.advance(milliseconds(1));
+  REQUIRE(h.working_orders().size() == 2);
+  h.disconnect(ConnectionStateMsg::kTrades);
+  h.advance(milliseconds(200));
+  CHECK(h.working_orders().empty());
+  auto t = trade(1, 100000000, Side::Sell);
+  h.push(t.hdr);  // A queued print is not evidence the connection recovered.
+  h.advance(milliseconds(200));
+  CHECK(h.working_orders().empty());
+  h.reconnect(ConnectionStateMsg::kTrades);
+  h.advance(milliseconds(50));
+  CHECK(h.working_orders().empty());
+  h.advance(milliseconds(150));
+  CHECK(h.working_orders().size() == 2);
+}
+
+TEST_CASE("retention.strategy: trade disconnect keeps reduction orders") {
+  StrategyHarness<BasicMM> h(parameters(2));
+  h.book("75000", "75000.10");
+  h.advance(milliseconds(1));
+  REQUIRE(h.fill(Side::Buy, 0.001_qty));
+  h.disconnect(ConnectionStateMsg::kTrades);
+  h.advance(milliseconds(200));
+  REQUIRE(h.working_orders().size() == 1);
+  CHECK(h.working_orders()[0].side == Side::Sell);
+  CHECK(h.working_orders()[0].leaves_qty() <= 0.001_qty);
+}
+
+TEST_CASE("retention.strategy: book-only filtering does not depend on trade connectivity") {
+  auto p = parameters(2);
+  p["gate_rule"] = "2";
+  StrategyHarness<BasicMM> h(p);
+  top(h, 100, 1_qty, 10_qty);
+  h.advance(milliseconds(1));
+  REQUIRE(h.working_orders().size() == 1);
+  h.disconnect(ConnectionStateMsg::kTrades);
+  h.advance(milliseconds(1));
+  REQUIRE(h.working_orders().size() == 1);
+  CHECK(h.working_orders()[0].side == Side::Sell);
+}
+
 TEST_CASE("retention.strategy: an unchanged gate does not accelerate inventory exit on trades") {
   auto p = parameters(2);
   p["gate_trade_den"] = "1";

@@ -570,9 +570,10 @@ static_assert(offsetof(ControlTransferMsg, command) == offsetof(ControlMsg, comm
               offsetof(ControlTransferMsg, venue_ref) == 121);
 
 struct ConnectionStateMsg {
+  static constexpr std::uint8_t kTrades = 2;
   EventHeader hdr;
   ConnState state;
-  std::uint8_t channel;  // 0 = market data, 1 = order/user stream
+  std::uint8_t channel;  // 0 = book data, 1 = order/user stream, 2 = trades
   std::uint8_t pad0_[2];
   std::int32_t reason_code;
   std::uint8_t pad_[56];

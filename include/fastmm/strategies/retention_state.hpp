@@ -23,15 +23,27 @@ class RetentionState {
     if (flow_) flow_->reset(now, Window::ResetReason::Connection);
     mask_ = 0;
   }
+  void connection(Timestamp now, ConnState state) noexcept {
+    connection_ = state == ConnState::Live ? TradeConnection::Live : TradeConnection::Down;
+    reset(now);
+  }
   void trade(Timestamp now, const TradeMsg& m) noexcept {
-    if (flow_) flow_->trade(now, m);
+    if (flow_ && connection_ != TradeConnection::Down) flow_->trade(now, m);
   }
   template <class Params>
   bool update(Timestamp now, const LatestBbo& top, const Params& p) noexcept {
     if (!flow_) return false;
     flow_->advance(now);
     unsigned mask = 0;
-    if (p.gate_mode == 2 && top.fresh(now, p.pull_on_stale_ms)) mask = evaluate(now, top, p);
+    if (p.gate_mode == 2 && top.fresh(now, p.pull_on_stale_ms)) {
+      const bool needs_trades = p.gate_rule == 0 || p.gate_rule == 1;
+      const bool unavailable =
+          connection_ == TradeConnection::Down || !flow_->totals(now, p.gate_window_ms).valid;
+      if (needs_trades && connection_ != TradeConnection::Unreported && unavailable)
+        mask = OrderRetentionGate::kBuy | OrderRetentionGate::kSell;
+      else
+        mask = evaluate(now, top, p);
+    }
     const bool changed = mask_ != mask;
     mask_ = mask;
     return changed;
@@ -55,7 +67,8 @@ class RetentionState {
                                                top.ask_qty().raw,
                                                f.buy,
                                                f.sell,
-                                               f.valid && top.fresh(ctx.now(), p.pull_on_stale_ms),
+                                               connection_ != TradeConnection::Down && f.valid &&
+                                                   top.fresh(ctx.now(), p.pull_on_stale_ms),
                                                mask_,
                                                static_cast<int>(flow_->reason()),
                                                flow_->resets(),
@@ -64,6 +77,8 @@ class RetentionState {
   }
 
  private:
+  // Older journals have no trade-channel events; preserve their original warmup semantics.
+  enum class TradeConnection { Unreported, Live, Down };
   template <class Params>
   unsigned evaluate(Timestamp now, const LatestBbo& top, const Params& p) const noexcept {
     if (p.gate_rule == 3) return static_cast<unsigned>(p.gate_forced_mask);
@@ -78,6 +93,7 @@ class RetentionState {
   std::unique_ptr<Window> flow_;
   OrderRetentionGate gate_;
   unsigned mask_ = 0;
+  TradeConnection connection_ = TradeConnection::Unreported;
 };
 
 }  // namespace fastmm

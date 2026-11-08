@@ -215,6 +215,14 @@ class BasicMM : public StrategyBase<BasicMMParams, ParamScope::PerInstrument> {
       if (inst.venue != m.hdr.venue || (m.hdr.instrument.valid() && m.hdr.instrument != inst.id))
         continue;
       State& state = states_[inst.id.value];
+      if (m.channel == ConnectionStateMsg::kTrades) {
+        state.retention.connection(ctx.now(), m.state);
+        if (params(inst.id).gate_mode == 2) {
+          state.last_mid = {};
+          decide(ctx, inst.id);
+        }
+        continue;
+      }
       state.last_mid = {};
       if (m.channel == 0) {
         state.top = LatestBbo{};

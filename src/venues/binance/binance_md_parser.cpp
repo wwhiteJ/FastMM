@@ -247,6 +247,7 @@ DecodeResult fail(MdParserStats& stats, DecodeResult r) noexcept {
   m->trade_id = trade_id;
   // Buyer is the maker -> the seller crossed the spread.
   m->aggressor = buyer_is_maker ? Side::Sell : Side::Buy;
+  m->pad_[0] = 0;  // Binance always supplies m; the reused output buffer is not zeroed.
   m->hdr.venue_seq = trade_id;
   m->hdr.exch_ts = ts_from_ms(trade_time != 0 ? trade_time : ev_time);
   stamp(*m, c.recv_ts, c.t0);
