@@ -1,4 +1,7 @@
 // Offline replay of a closed collector session using the exact paper Shadow path.
+#include "mask_schedule.hpp"
+#include "replay_settings.hpp"
+
 #include "fastmm/backtest/shadow.hpp"
 #include "fastmm/config/config.hpp"
 #include "fastmm/core/log.hpp"
@@ -9,20 +12,24 @@
 #include <stdexcept>
 
 namespace {
-void replay(const char* journal, const char* config_path, const char* output) {
+void replay(const char* journal,
+            const char* config_path,
+            const char* output,
+            const char* schedule) {
   const fastmm::Config config = fastmm::Config::load(config_path);
   fastmm::bt::ShadowOptions options;
   options.window = fastmm::seconds(30);
   options.settle = fastmm::seconds(10);
   options.keep_results = true;
+  options.factory = fastmm::paper::replay_factory(schedule ? schedule : "");
   options.configure = [&](fastmm::bt::BacktestConfig& run) {
-    run.params = config.strategy.params;
-    for (const auto& [name, value] : run.params) {
-      static_cast<void>(value);
-      run.params_pinned.push_back(name);
-    }
-    run.engine.risk.reduce_only_min_notional_exempt = config.risk.reduce_only_min_notional_exempt;
+    fastmm::paper::configure(config, run, output);
+    const auto rule = run.params.find("gate_rule");
+    const bool scheduled = rule != run.params.end() && rule->second == "3";
+    if (scheduled != (schedule != nullptr))
+      throw std::runtime_error("scheduled research rule and mask CSV must be provided together");
   };
+  options.on_rows = [](const fastmm::bt::ShadowRows&) { fastmm::Logger::instance().flush(); };
   fastmm::bt::Shadow shadow(options);
   const auto session = shadow.session(journal);
   if (session.results.size() != 1 || session.stopped || session.seq_gaps != 0)
@@ -39,8 +46,10 @@ void replay(const char* journal, const char* config_path, const char* output) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 4) {
-    std::fprintf(stderr, "usage: fastmm-paper-replay CLOSED_JOURNAL PARAM_CONFIG OUTPUT_DIR\n");
+  if (argc != 4 && argc != 5) {
+    std::fprintf(
+        stderr,
+        "usage: fastmm-paper-replay CLOSED_JOURNAL PARAM_CONFIG OUTPUT_DIR [MASK_SCHEDULE.csv]\n");
     return 2;
   }
   try {
@@ -48,10 +57,12 @@ int main(int argc, char** argv) {
     const std::string path = std::string(argv[3]) + "/decisions.log";
     if (!fastmm::Logger::instance().start_file(path, fastmm::LogLevel::Error))
       throw std::runtime_error("cannot open decisions log");
-    replay(argv[1], argv[2], argv[3]);
+    replay(argv[1], argv[2], argv[3], argc == 5 ? argv[4] : nullptr);
     fastmm::Logger::instance().stop();
     std::ofstream metadata(std::string(argv[3]) + "/diagnostics.json");
     metadata << "{\"log_dropped\":" << fastmm::Logger::instance().dropped() << "}\n";
+    if (fastmm::Logger::instance().dropped())
+      throw std::runtime_error("diagnostic records dropped");
   } catch (const std::exception& error) {
     fastmm::Logger::instance().stop();
     std::fprintf(stderr, "%s\n", error.what());

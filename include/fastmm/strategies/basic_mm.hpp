@@ -15,6 +15,7 @@
 #include "fastmm/strategies/inventory_exit.hpp"
 #include "fastmm/strategies/latest_bbo.hpp"
 #include "fastmm/strategies/quoting.hpp"
+#include "fastmm/strategies/retention_state.hpp"
 #include "fastmm/strategies/strategy.hpp"
 
 #include <cstdint>
@@ -67,12 +68,60 @@ struct BasicMMParams {
                   "minimum interval between hard-exit attempts")
   FASTMM_PARAM(int, levels, 1, 1, 8, "quote levels per side")
   FASTMM_PARAM(int, level_step_ticks, 1, 1, 100000, "tick distance between successive levels")
+  FASTMM_PARAM(int,
+               gate_mode,
+               0,
+               0,
+               2,
+               "retention: 0 off, 1 observe, 2 research/validated active; restart to enable")
+  FASTMM_PARAM_MS(gate_window_ms,
+                  milliseconds(0),
+                  milliseconds(0),
+                  milliseconds(60000),
+                  "explicit calibrated flow window; 0 is unset")
+  FASTMM_PARAM(
+      std::int64_t, gate_trade_num, -1, -1, INT64_MAX, "flow threshold numerator; -1 is unset")
+  FASTMM_PARAM(
+      std::int64_t, gate_trade_den, 0, 0, INT64_MAX, "flow threshold denominator; 0 is unset")
+  FASTMM_PARAM(
+      std::int64_t, gate_book_num, -1, -1, INT64_MAX, "book threshold numerator; -1 is unset")
+  FASTMM_PARAM(
+      std::int64_t, gate_book_den, 0, 0, INT64_MAX, "book threshold denominator; 0 is unset")
+  FASTMM_PARAM(std::int64_t,
+               entry_start_ns,
+               0,
+               0,
+               INT64_MAX,
+               "research warmup: no entry before this engine timestamp")
+  FASTMM_PARAM(std::int64_t,
+               entry_stop_ns,
+               0,
+               0,
+               INT64_MAX,
+               "research drain: no risk increase at or after this timestamp")
+  FASTMM_PARAM(
+      int, gate_rule, 0, 0, 3, "research control: 0 joint, 1 flow, 2 book, 3 scheduled mask")
+  FASTMM_PARAM(int, gate_forced_mask, 0, 0, 2, "scheduled research control: 0 clear, 1 buy, 2 sell")
+  FASTMM_PARAM(std::int64_t,
+               gate_trace_start_ns,
+               0,
+               0,
+               INT64_MAX,
+               "diagnostic output begins at this timestamp")
   [[nodiscard]] std::optional<std::string> validate() const {
     if (inventory_hard_ms.ns > 0 && inventory_soft_ms >= inventory_hard_ms)
       return "inventory_hard_ms must exceed inventory_soft_ms";
     if ((inventory_soft_ms.ns > 0 || inventory_hard_ms.ns > 0 || inventory_reduce_pct > 0) &&
         !quote_qty.is_positive())
       return "inventory exit needs positive quote_qty";
+    if (gate_mode == 2 && gate_rule != 3 &&
+        (gate_window_ms.ns == 0 || gate_trade_num < 0 || gate_trade_den <= 0 || gate_book_num < 0 ||
+         gate_book_den <= 0 || gate_trade_num > gate_trade_den || gate_book_num > gate_book_den))
+      return "active retention requires an explicit window and exact thresholds";
+    if (gate_rule == 3 && (gate_mode != 2 || !entry_start_ns || !entry_stop_ns))
+      return "scheduled masks require an explicitly bounded research replay";
+    if (entry_stop_ns && (entry_stop_ns <= entry_start_ns || inventory_hard_ms.ns <= 0))
+      return "research drain requires ordered boundaries and enabled hard exit";
     return std::nullopt;
   }
 };
@@ -81,11 +130,22 @@ class BasicMM : public StrategyBase<BasicMMParams, ParamScope::PerInstrument> {
  public:
   static constexpr std::string_view name() noexcept { return "basic_mm"; }
   static constexpr std::uint64_t kStaleTimer = 0x5741'4c45;  // "STALE"
+  static constexpr std::uint64_t kAccountingTimer = 0x4143'4354;
 
   template <class Ctx>
   void on_start(Ctx& ctx) noexcept {
     for (auto& state : states_) state = State{};
+    for (const auto& inst : ctx.instruments())
+      states_[inst.id.value].retention.prepare(params(inst.id).gate_mode, ctx.now());
     stale_timer_ = ctx.every(milliseconds(100), kStaleTimer);
+    for (const auto& inst : ctx.instruments()) {
+      const auto& p = params(inst.id);
+      if (p.gate_mode || p.entry_start_ns || p.entry_stop_ns) {
+        const auto hour = seconds(3600).ns;
+        static_cast<void>(ctx.once(Duration{hour - ctx.now().ns % hour}, kAccountingTimer));
+        break;
+      }
+    }
   }
 
   template <class Ctx, class Book>
@@ -97,6 +157,20 @@ class BasicMM : public StrategyBase<BasicMMParams, ParamScope::PerInstrument> {
   template <class Ctx>
   void on_book_ticker(Ctx& ctx, InstrumentId id, const BookTickerMsg& m) noexcept {
     if (states_[id.value].top.ticker(m, ctx.now())) decide(ctx, id);
+  }
+
+  template <class Ctx>
+  void on_trade(Ctx& ctx, InstrumentId id, const TradeMsg& m) noexcept {
+    const auto& p = params(id);
+    if (p.gate_mode == 0) return;
+    auto& state = states_[id.value];
+    state.retention.trade(ctx.now(), m);
+    if (p.gate_mode != 2 || !state.retention.update(ctx.now(), state.top, p)) return;
+    // Trade callbacks change quotes only when the gate changes. They must not accelerate the
+    // baseline inventory lifecycle merely because feature collection adds an on_trade hook.
+    state.last_mid = {};
+    state.retention.trace(ctx, id, state.top, p);
+    decide(ctx, id);
   }
 
   template <class Ctx>
@@ -114,17 +188,24 @@ class BasicMM : public StrategyBase<BasicMMParams, ParamScope::PerInstrument> {
     State& state = states_[u.order.instrument.value];
     state.retry = true;  // a deferred quote may have been refused while another cancel was pending
     if (state.exit.observe(u)) trace(ctx, u.order.instrument, "exit_order_update");
-    if (state.pulled || state.exit.mode() != InventoryExit::Mode::Normal)
+    if (state.pulled || state.exit.mode() != InventoryExit::Mode::Normal ||
+        state.retention.mask() || state.entry_phase != 0)
       decide(ctx, u.order.instrument);
   }
 
   template <class Ctx>
   void on_timer(Ctx& ctx, TimerId, std::uint64_t tag) noexcept {
+    if (tag == kAccountingTimer) {
+      account(ctx);
+      static_cast<void>(ctx.once(seconds(3600), kAccountingTimer));
+      return;
+    }
     if (tag != kStaleTimer) return;
     for (const Instrument& inst : ctx.instruments()) {
       State& state = states_[inst.id.value];
       if (state.retry) state.last_mid = {};
       decide(ctx, inst.id);
+      state.retention.trace(ctx, inst.id, state.top, params(inst.id));
     }
   }
 
@@ -135,7 +216,10 @@ class BasicMM : public StrategyBase<BasicMMParams, ParamScope::PerInstrument> {
         continue;
       State& state = states_[inst.id.value];
       state.last_mid = {};
-      if (m.channel == 0) state.top = LatestBbo{};
+      if (m.channel == 0) {
+        state.top = LatestBbo{};
+        state.retention.reset(ctx.now());
+      }
       if (m.channel == 1) state.order_live = m.state == ConnState::Live;
       if (m.state != ConnState::Live) {
         pull(ctx, inst.id);
@@ -195,21 +279,51 @@ class BasicMM : public StrategyBase<BasicMMParams, ParamScope::PerInstrument> {
   }
 
  private:
+  template <class Ctx>
+  void account(Ctx& ctx) const noexcept {
+    for (const auto& inst : ctx.instruments()) {
+      const auto& p = ctx.position(inst.id);
+      const auto& top = states_[inst.id.value].top;
+      ctx.trace_retention_equity(
+          RetentionEquity{ctx.now(),
+                          inst.id,
+                          p.qty,
+                          p.avg_px,
+                          top.bid(),
+                          top.ask(),
+                          p.realized,
+                          p.fees,
+                          top.fresh(ctx.now(), params(inst.id).pull_on_stale_ms)});
+    }
+  }
+
   struct State {
     LatestBbo top;
     InventoryExit exit;
+    RetentionState retention;
+    OrderRetentionGate boundary;
     Price last_mid{};
     Price desired_bid{};
     Price desired_ask{};
     bool pulled = false;
     bool retry = false;
     bool order_live = true;
+    int entry_phase = 0;
   };
 
   template <class Ctx>
   void decide(Ctx& ctx, InstrumentId id) noexcept {
     State& s = states_[id.value];
     const BasicMMParams& p = params(id);
+    const int phase = p.entry_start_ns && ctx.now().ns < p.entry_start_ns  ? -1
+                      : p.entry_stop_ns && ctx.now().ns >= p.entry_stop_ns ? 1
+                                                                           : 0;
+    if (phase != s.entry_phase) s.last_mid = {};
+    s.entry_phase = phase;
+    if (s.retention.update(ctx.now(), s.top, p)) {
+      s.last_mid = {};
+      s.retention.trace(ctx, id, s.top, p);
+    }
     // The engine owns reconciliation holds and control pulls. Never override those holds.
     if (ctx.reconciling() || !ctx.quoting_enabled() || !s.order_live) return;
     const Qty position = ctx.position(id).qty;
@@ -241,6 +355,16 @@ class BasicMM : public StrategyBase<BasicMMParams, ParamScope::PerInstrument> {
     State& s = states_[id.value];
     DesiredQuotes q = compute_quotes(s.top.mid(), ctx.position(id).qty, inst);
     s.exit.constrain(q, ctx.position(id).qty);
+    s.retention.constrain(
+        q, ctx.position(id).qty, ctx.open_qty(id, Side::Buy), ctx.open_qty(id, Side::Sell));
+    if (params(id).gate_mode == 2 && !s.retention.ready()) q.clear();
+    if (s.entry_phase < 0) q.clear();
+    if (s.entry_phase > 0)
+      s.boundary.constrain(q,
+                           ctx.position(id).qty,
+                           ctx.open_qty(id, Side::Buy),
+                           ctx.open_qty(id, Side::Sell),
+                           OrderRetentionGate::kBuy | OrderRetentionGate::kSell);
     keep_passive(q, s.top.bid(), s.top.ask(), inst.tick);
     fit_to_balance(ctx, id, inst, q);
     const QuoteStats before = ctx.quote_stats();

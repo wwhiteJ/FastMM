@@ -1,0 +1,2 @@
+# Statistical algorithm is preregistered. Freeze resolved versions in every run lock.
+arch==8.0.0
